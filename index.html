@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Room Check Upload</title>
+
+  <style>
+    body {
+      height: 100vh;
+      margin: 0;
+      background-image: url("JacksonState_CampusWalkway.jpg");
+      background-size: cover;
+      background-position: center;
+      background-repeat: no-repeat;
+      font-family: "Times New Roman", Times, serif;
+
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    
+    .container {
+      width: 350px;
+      padding: 25px;
+      text-align: center;
+
+      background: rgba(255, 255, 255, 0.15);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+
+      border-radius: 12px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
+      color: white;
+    }
+
+    h2 {
+      margin-bottom: 20px;
+    }
+
+    label {
+      display: block;
+      margin-top: 10px;
+      font-weight: bold;
+    }
+
+    input {
+      width: 100%;
+      padding: 8px;
+      margin-top: 5px;
+      border-radius: 6px;
+      border: none;
+    }
+
+    button {
+      margin-top: 15px;
+      padding: 10px;
+      width: 100%;
+      border-radius: 6px;
+      border: none;
+      cursor: pointer;
+      font-weight: bold;
+    }
+
+    button:hover {
+      opacity: 0.9;
+    }
+
+    #message {
+      margin-top: 15px;
+      font-weight: bold;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="container">
+    <h2>Room Check Photo Upload</h2>
+
+    <label>Room Number</label>
+    <input type="text" id="room" placeholder="e.g., 213B" required>
+
+    <label>Choose Image</label>
+    <input type="file" id="fileInput" accept="image/*" required>
+
+    <button id="uploadBtn">Upload</button>
+
+    <p id="message"></p>
+  </div>
+
+  <script>
+    const uploadBtn = document.getElementById("uploadBtn");
+    const message = document.getElementById("message");
+
+    uploadBtn.addEventListener("click", async () => {
+      const room = document.getElementById("room").value;
+      const file = document.getElementById("fileInput").files[0];
+
+      if (!room || !file) {
+        message.textContent = "Please enter room number and select an image.";
+        return;
+      }
+
+      message.textContent = "Requesting upload URL...";
+
+      try {
+        const lambdaURL =
+          "https://s8h2e5f2j0.execute-api.us-east-2.amazonaws.com/prod/upload";
+
+        const response = await fetch(lambdaURL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ room }),
+        });
+
+        const data = await response.json();
+        const uploadURL = data.uploadURL;
+
+        message.textContent = "Uploading image...";
+
+        await fetch(uploadURL, {
+          method: "PUT",
+          body: file,
+        });
+
+        message.textContent = "✅ Upload successful!";
+      } catch (error) {
+        message.textContent = "❌ Upload failed.";
+      }
+    });
+  </script>
+</body>
+</html>
+
