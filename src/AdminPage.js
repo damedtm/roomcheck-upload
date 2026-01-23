@@ -1,24 +1,25 @@
+// src/AdminPage.js
 import { useState, useEffect, useMemo } from "react";
+import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
 import { DynamoDBClient, ScanCommand } from "@aws-sdk/client-dynamodb";
 import { fromCognitoIdentityPool } from "@aws-sdk/credential-providers";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { useAuth } from "react-oidc-context";
 
 const REGION = "us-east-2";
+const BUCKET_NAME = "roomcheck-photos-damianohajunwa";
 const TABLE_NAME = "RoomUploads";
 const IDENTITY_POOL_ID = "us-east-2:0d00064d-9170-417c-862e-316009584b52";
 
 export default function AdminPage() {
   const auth = useAuth();
-  const [uploads, setUploads] = useState([]);
+  const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
 
-  const { email: userEmail, iss } = auth.user?.profile || {};
+  const { iss } = auth.user?.profile || {};
 
-  // Hooks are always called, conditional logic inside
   const credentials = useMemo(() => {
     if (!auth.user || !iss) return null;
-
     return fromCognitoIdentityPool({
       clientConfig: { region: REGION },
       identityPoolId: IDENTITY_POOL_ID,
@@ -29,89 +30,93 @@ export default function AdminPage() {
     });
   }, [auth.user, iss]);
 
-  const dynamo = useMemo(() => {
-    if (!credentials) return null;
+  const s3 = useMemo(() => (credentials ? new S3Client({ region: REGION, credentials }) : null), [credentials]);
+  const dynamo = useMemo(() => (credentials ? new DynamoDBClient({ region: REGION, credentials }) : null), [credentials]);
 
-    return new DynamoDBClient({
-      region: REGION,
-      credentials,
-    });
-  }, [credentials]);
+  const authReady = auth.isAuthenticated && auth.user && s3 && dynamo;
 
-  // Fetch uploads safely
   useEffect(() => {
-    if (!auth.isAuthenticated || !auth.user || !dynamo) return;
+    if (!authReady) return;
 
-    let cancelled = false;
-
-    async function fetchUploads() {
-      setLoading(true);
-      setError("");
-
+    const fetchItems = async () => {
       try {
-        let items = [];
-        let lastKey;
+        const data = await dynamo.send(new ScanCommand({ TableName: TABLE_NAME }));
 
-        do {
-          const result = await dynamo.send(
-            new ScanCommand({
-              TableName: TABLE_NAME,
-              ExclusiveStartKey: lastKey,
-            })
-          );
+        const validItems = (data.Items || []).filter(item => item.PK?.S && item.SK?.S);
 
-          items = items.concat(result.Items || []);
-          lastKey = result.LastEvaluatedKey;
-        } while (lastKey);
+        const itemsWithPreview = await Promise.all(
+          validItems.map(async (item) => {
+            let previewUrl = null;
+            if (item.s3Key?.S) {
+              try {
+                previewUrl = await getSignedUrl(
+                  s3,
+                  new GetObjectCommand({ Bucket: BUCKET_NAME, Key: item.s3Key.S }),
+                  { expiresIn: 3600 }
+                );
+              } catch (err) {
+                console.error("Error generating preview URL:", err);
+              }
+            }
+            return {
+              ...item,
+              previewUrl,
+            };
+          })
+        );
 
-        if (!cancelled) setUploads(items);
+        setItems(itemsWithPreview);
       } catch (err) {
-        console.error("Error fetching uploads:", err);
-        if (!cancelled) setError("Failed to fetch uploads");
+        console.error("Error fetching items:", err);
       } finally {
-        if (!cancelled) setLoading(false);
+        setLoading(false);
       }
-    }
+    };
 
-    fetchUploads();
-    return () => (cancelled = true);
-  }, [auth.isAuthenticated, auth.user, dynamo]);
+    fetchItems();
+  }, [authReady, dynamo, s3]);
 
-  // Conditional rendering
-  if (!auth.isAuthenticated || !auth.user || !dynamo) return <p>Loading...</p>;
+  if (!authReady) return <p>Loading...</p>;
 
   return (
     <div>
       <h2>Admin Dashboard</h2>
-      <p>Email: {userEmail || "Unknown"}</p>
-
+      <p>Email: {auth.user.profile.email}</p>
       <button onClick={() => auth.removeUser()}>Sign out</button>
 
       <h3>Uploaded Files</h3>
-
       {loading ? (
-        <p>Loading uploads...</p>
-      ) : error ? (
-        <p>{error}</p>
-      ) : uploads.length === 0 ? (
-        <p>No uploads yet.</p>
+        <p>Loading files...</p>
       ) : (
-        <table border="1" cellPadding="5">
+        <table border="1" cellPadding="8">
           <thead>
             <tr>
               <th>User Email</th>
               <th>File Name</th>
-              <th>S3 Key</th>
+              <th>Preview</th>
               <th>Timestamp</th>
             </tr>
           </thead>
           <tbody>
-            {uploads.map((item, index) => (
-              <tr key={item.s3Key?.S || index}>
-                <td>{item.userEmail?.S || "N/A"}</td>
-                <td>{item.fileName?.S || "N/A"}</td>
-                <td>{item.s3Key?.S || "N/A"}</td>
-                <td>{item.timestamp?.S || "N/A"}</td>
+            {items.map((item, idx) => (
+              <tr key={idx}>
+                <td>{item.userEmail?.S || "-"}</td>
+                <td>{item.fileName?.S || "-"}</td>
+                <td>
+                  {item.previewUrl ? (
+                    <a href={item.previewUrl} target="_blank" rel="noreferrer">
+                      <img
+                        src={item.previewUrl}
+                        alt="preview"
+                        style={{ width: "100px", borderRadius: "6px" }}
+                        onError={(e) => (e.target.style.display = "none")}
+                      />
+                    </a>
+                  ) : (
+                    "-"
+                  )}
+                </td>
+                <td>{item.createdAt?.S || "-"}</td>
               </tr>
             ))}
           </tbody>
