@@ -25,7 +25,6 @@ const MAX_FILE_SIZE_MB = 10;
 
 export default function RAPage() {
   const auth = useAuth();
-
   const [files, setFiles] = useState([]);
   const [previews, setPreviews] = useState([]);
   const [warnings, setWarnings] = useState([]);
@@ -34,7 +33,6 @@ export default function RAPage() {
   const [roomNumber, setRoomNumber] = useState("");
   const [uploadedBy, setUploadedBy] = useState("");
   const [notes, setNotes] = useState("");
-
   const [toast, setToast] = useState(null);
 
   const userId =
@@ -86,7 +84,7 @@ export default function RAPage() {
       const sizeMb = file.size / (1024 * 1024);
       if (sizeMb > MAX_FILE_SIZE_MB) {
         newWarnings.push(
-          `${file.name} is larger than ${MAX_FILE_SIZE_MB}MB and may upload slowly.`
+          `${file.name} is larger than ${MAX_FILE_SIZE_MB} MB and may upload slowly.`
         );
       }
       validFiles.push(file);
@@ -121,7 +119,6 @@ export default function RAPage() {
       setToast({ type: "error", message: "Please select files and fill all required fields." });
       return;
     }
-
     if (!dorm || !roomNumber || !uploadedBy) {
       setToast({ type: "error", message: "Dorm, Room Number, and Uploaded By are required." });
       return;
@@ -164,7 +161,6 @@ export default function RAPage() {
       }
 
       setToast({ type: "success", message: "Upload successful!" });
-
       clearAllFiles();
       setDorm("");
       setRoomNumber("");
@@ -183,7 +179,16 @@ export default function RAPage() {
   return (
     <div style={{ background: "#f7f7f7", minHeight: "100vh", padding: "40px" }}>
       <div style={{ maxWidth: "800px", margin: "0 auto" }}>
-        <h1 style={{ textAlign: "center", marginBottom: "20px" }}>RA Dashboard</h1>
+
+        {/* Title */}
+        <h1 style={{ textAlign: "center", marginBottom: "10px" }}>
+          RA Dashboard
+        </h1>
+
+        {/* Sub-header */}
+        <h2 style={{ textAlign: "center", color: "#555", marginBottom: "20px" }}>
+          Room‑Check Reporting
+        </h2>
 
         {toast && (
           <div
@@ -199,16 +204,27 @@ export default function RAPage() {
           </div>
         )}
 
-        <div style={{ background: "white", padding: "20px", borderRadius: "8px", marginBottom: "20px" }}>
+        {/* Upload Form */}
+        <div
+          style={{
+            background: "white",
+            padding: "20px",
+            borderRadius: "8px",
+            marginBottom: "20px",
+          }}
+        >
           <h2>Upload Room Photos</h2>
           <p style={{ color: "#666" }}>Logged in as {userEmail}</p>
-
           <hr style={{ margin: "20px 0" }} />
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
             <div>
               <label>Dorm *</label>
-              <select value={dorm} onChange={(e) => setDorm(e.target.value)} style={{ width: "100%" }}>
+              <select
+                value={dorm}
+                onChange={(e) => setDorm(e.target.value)}
+                style={{ width: "100%" }}
+              >
                 <option value="">Select Dorm</option>
                 {DORMS.map((d) => (
                   <option key={d} value={d}>
@@ -255,7 +271,14 @@ export default function RAPage() {
           </div>
 
           {warnings.length > 0 && (
-            <div style={{ marginTop: "16px", padding: "10px", background: "#fff8e1", borderRadius: "6px" }}>
+            <div
+              style={{
+                marginTop: "16px",
+                padding: "10px",
+                background: "#fff8e1",
+                borderRadius: "6px",
+              }}
+            >
               {warnings.map((w, i) => (
                 <p key={i} style={{ margin: 0 }}>
                   {w}
@@ -265,13 +288,20 @@ export default function RAPage() {
           )}
         </div>
 
+        {/* Preview Section */}
         {previews.length > 0 && (
-          <div style={{ background: "white", padding: "20px", borderRadius: "8px", marginBottom: "20px" }}>
+          <div
+            style={{
+              background: "white",
+              padding: "20px",
+              borderRadius: "8px",
+              marginBottom: "20px",
+            }}
+          >
             <div style={{ display: "flex", justifyContent: "space-between" }}>
               <h2>Selected Images ({previews.length})</h2>
               <button onClick={clearAllFiles}>Clear All</button>
             </div>
-
             <hr style={{ margin: "20px 0" }} />
 
             <div
@@ -316,6 +346,7 @@ export default function RAPage() {
           </div>
         )}
 
+        {/* Upload Button */}
         <button
           onClick={handleUpload}
           disabled={uploading || files.length === 0}
@@ -333,6 +364,7 @@ export default function RAPage() {
           {uploading ? "Uploading..." : "Upload"}
         </button>
 
+        {/* Sign Out */}
         <button
           onClick={() => auth.removeUser()}
           style={{
