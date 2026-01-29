@@ -11,7 +11,7 @@ import ManageUsersTable from "./ManageUsersTable";
 
 const REGION = "us-east-2";
 const BUCKET_NAME = "roomcheck-photos-damianohajunwa";
-const TABLE_NAME = "RoomUploads";
+const TABLE_NAME = "RoomCheckUsers";
 const IDENTITY_POOL_ID = "us-east-2:0d00064d-9170-417c-862e-316009584b52";
 
 const DORMS = [
@@ -201,7 +201,10 @@ export default function AdminPage() {
     setCreateError(null);
 
     try {
-      const resp = await fetch("https://YOUR_CREATE_USER_API_URL/admin/create-user", {
+      const resp = await fetch(
+  "https://ndd3vawb71.execute-api.us-east-2.amazonaws.com/prod/admin/create-user",
+  {
+
         method: "POST",
         headers: {
           "Content-Type": "application/json",
