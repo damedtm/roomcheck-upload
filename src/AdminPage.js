@@ -3,8 +3,10 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "react-oidc-context";
 
-const API_URL =
-  "https://s8h2e5f2j0.execute-api.us-east-2.amazonaws.com/prod/admin/fetch-uploads";
+import AddUserForm from "./AddUserForm";
+import ManageUsersTable from "./ManageUsersTable";
+import ViewUploads from "./ViewUploads";
+import { getUploads, createUser } from "./api";
 
 const DORMS = [
   "Alexander Hall",
@@ -15,107 +17,61 @@ const DORMS = [
   "Stewart Hall",
   "One University Place",
   "Walthall Lofts",
-  "Courthouse Apartments",
+  "Courthouse Apartments"
 ];
 
 export default function AdminPage() {
   const auth = useAuth();
 
-  const [items, setItems] = useState([]);
-  const [loading, setLoading] = useState(true);
-
-  const [selectedDorm, setSelectedDorm] = useState("All");
-  const [searchQuery, setSearchQuery] = useState("");
-  const [sortOption, setSortOption] = useState("newest");
-
-  const ITEMS_PER_PAGE = 10;
-  const [page, setPage] = useState(1);
-
+  // SECTION STATE
   const [selectedSection, setSelectedSection] = useState("reports");
+  const [userAction, setUserAction] = useState("view");
 
-  const formatDate = (iso) => {
-    if (!iso) return "-";
-    const d = new Date(iso);
-    return d.toLocaleString("en-US", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
-    });
-  };
+  // REPORTS STATE
+  const [uploads, setUploads] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [selectedDorm, setSelectedDorm] = useState("All");
+  const [page, setPage] = useState(1);
+  const PER_PAGE = 5;
+  const [dormsOpen, setDormsOpen] = useState(true);
 
-  // Fetch uploads from API
+  // USERS STATE
+  const [creatingUser, setCreatingUser] = useState(false);
+  const [createError, setCreateError] = useState(null);
+
+  // FETCH UPLOADS
   useEffect(() => {
-    const fetchUploads = async () => {
+    async function load() {
       try {
-        const resp = await fetch(API_URL);
-        const data = await resp.json();
-
-        setItems(data.items || []);
+        const items = await getUploads(auth.user.id_token);
+        setUploads(items);
       } catch (err) {
-        console.error("Error fetching uploads:", err);
+        console.error("Error loading uploads:", err);
       } finally {
         setLoading(false);
       }
-    };
+    }
 
-    fetchUploads();
-  }, []);
+    if (auth.isAuthenticated) load();
+  }, [auth.isAuthenticated, auth.user]);
 
   if (!auth.isAuthenticated) return <p>Loading...</p>;
 
-  // SEARCH
-  const searchLower = searchQuery.toLowerCase();
-  const searched = items.filter((item) => {
-    const fields = [
-      item.uploadedByName,
-      item.dorm,
-      item.room,
-      item.notes,
-      item.residentName,
-      item.residentEmail,
-      item.inspectionStatus,
-    ];
+  const handleCreateUser = async (formData) => {
+    setCreatingUser(true);
+    setCreateError(null);
 
-    return fields.some((f) => f?.toLowerCase().includes(searchLower));
-  });
-
-  // FILTER BY DORM
-  const dormFiltered =
-    selectedDorm === "All"
-      ? searched
-      : searched.filter((i) => i.dorm === selectedDorm);
-
-  // SORT
-  const sorted = [...dormFiltered].sort((a, b) => {
-    const dateA = new Date(a.uploadedAt);
-    const dateB = new Date(b.uploadedAt);
-
-    switch (sortOption) {
-      case "newest":
-        return dateB - dateA;
-      case "oldest":
-        return dateA - dateB;
-      case "roomAZ":
-        return (a.room || "").localeCompare(b.room || "");
-      case "roomZA":
-        return (b.room || "").localeCompare(a.room || "");
-      case "raAZ":
-        return (a.uploadedByName || "").localeCompare(b.uploadedByName || "");
-      case "raZA":
-        return (b.uploadedByName || "").localeCompare(a.uploadedByName || "");
-      default:
-        return 0;
+    try {
+      await createUser(formData);
+      setSelectedSection("users");
+      setUserAction("view");
+    } catch (err) {
+      setCreateError(err.message);
+    } finally {
+      setCreatingUser(false);
     }
-  });
-
-  // PAGINATION
-  const totalPages = Math.ceil(sorted.length / ITEMS_PER_PAGE);
-  const paginated = sorted.slice(
-    (page - 1) * ITEMS_PER_PAGE,
-    page * ITEMS_PER_PAGE
-  );
+  };
 
   return (
     <div style={{ display: "flex", minHeight: "100vh", background: "#f7f7f7" }}>
@@ -130,11 +86,12 @@ export default function AdminPage() {
           top: 0,
           left: 0,
           bottom: 0,
-          overflowY: "auto",
+          overflowY: "auto"
         }}
       >
-        <h2>Admin Menu</h2>
+        <h2 style={{ marginBottom: "20px" }}>Admin Menu</h2>
 
+        {/* DORM REPORTS */}
         <div
           onClick={() => {
             setSelectedSection("reports");
@@ -144,21 +101,81 @@ export default function AdminPage() {
           style={{
             padding: "10px 0",
             cursor: "pointer",
-            fontWeight: selectedSection === "reports" ? "bold" : "normal",
+            fontWeight: selectedSection === "reports" ? "bold" : "normal"
           }}
         >
-          Dashboard (Reports)
+          Dorm Reports
         </div>
 
-        <h3 style={{ marginTop: "20px" }}>Dorms</h3>
+        {/* DORMS LIST */}
+        <div
+          onClick={() => setDormsOpen(!dormsOpen)}
+          style={{
+            padding: "10px 0",
+            cursor: "pointer",
+            display: "flex",
+            justifyContent: "space-between",
+            fontWeight: "bold",
+            marginTop: "10px"
+          }}
+        >
+          Dorms
+          <span>{dormsOpen ? "▼" : "▶"}</span>
+        </div>
 
-        {DORMS.map((d) => (
+        {dormsOpen && (
+          <div style={{ marginLeft: "10px" }}>
+            {DORMS.map((dorm) => {
+              const isActive =
+                selectedSection === "reports" && selectedDorm === dorm;
+
+              return (
+                <div
+                  key={dorm}
+                  onClick={() => {
+                    setSelectedSection("reports");
+                    setSelectedDorm(dorm);
+                    setPage(1);
+                  }}
+                  style={{
+                    padding: "8px 10px",
+                    cursor: "pointer",
+                    borderRadius: "6px",
+                    marginBottom: "4px",
+                    background: isActive
+                      ? "rgba(0, 102, 255, 0.12)"
+                      : "transparent",
+                    boxShadow: isActive
+                      ? "0 0 8px rgba(0, 102, 255, 0.25)"
+                      : "none",
+                    fontWeight: isActive ? "bold" : "normal",
+                    color: isActive ? "#003d99" : "#333"
+                  }}
+                >
+                  {dorm}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* MANAGE USERS */}
+        <div
+          style={{
+            padding: "10px 0",
+            cursor: "pointer",
+            fontWeight: "bold",
+            marginTop: "20px"
+          }}
+        >
+          Manage Users
+        </div>
+
+        <div style={{ marginLeft: "10px" }}>
           <div
-            key={d}
             onClick={() => {
-              setSelectedDorm(d);
-              setSelectedSection("reports");
-              setPage(1);
+              setSelectedSection("users");
+              setUserAction("add");
             }}
             style={{
               padding: "8px 10px",
@@ -166,223 +183,104 @@ export default function AdminPage() {
               borderRadius: "6px",
               marginBottom: "4px",
               background:
-                selectedDorm === d ? "rgba(0, 102, 255, 0.12)" : "transparent",
-              fontWeight: selectedDorm === d ? "bold" : "normal",
+                selectedSection === "users" && userAction === "add"
+                  ? "rgba(0, 102, 255, 0.12)"
+                  : "transparent"
             }}
           >
-            {d}
+            Add User
           </div>
-        ))}
 
-        <button
-          onClick={() => auth.removeUser()}
-          style={{
-            marginTop: "30px",
-            width: "100%",
-            padding: "10px",
-            borderRadius: "6px",
-            border: "1px solid #444",
-            background: "white",
-            cursor: "pointer",
-          }}
-        >
-          Sign out
-        </button>
+          <div
+            onClick={() => {
+              setSelectedSection("users");
+              setUserAction("view");
+            }}
+            style={{
+              padding: "8px 10px",
+              cursor: "pointer",
+              borderRadius: "6px",
+              marginBottom: "4px",
+              background:
+                selectedSection === "users" && userAction === "view"
+                  ? "rgba(0, 102, 255, 0.12)"
+                  : "transparent"
+            }}
+          >
+            View Users
+          </div>
+        </div>
+
+        {/* SIGN OUT */}
+        <div style={{ marginTop: "30px" }}>
+          <button
+            onClick={() => auth.removeUser()}
+            style={{
+              width: "100%",
+              padding: "10px",
+              borderRadius: "6px",
+              border: "1px solid #444",
+              background: "white",
+              cursor: "pointer"
+            }}
+          >
+            Sign out
+          </button>
+        </div>
       </div>
 
       {/* MAIN CONTENT */}
       <div style={{ marginLeft: "300px", padding: "40px", width: "100%" }}>
-        <h1 style={{ textAlign: "center" }}>Admin Dashboard</h1>
+        <h1 style={{ textAlign: "center", marginBottom: "10px" }}>
+          Admin Dashboard
+        </h1>
 
+        <h2 style={{ textAlign: "center", color: "#555", marginBottom: "20px" }}>
+          {selectedSection === "reports"
+            ? "Dorm Reports"
+            : userAction === "add"
+            ? "Add New User"
+            : "User Management"}
+        </h2>
+
+        {/* Logged in info */}
         <div
           style={{
             background: "white",
             padding: "16px 20px",
             borderRadius: "8px",
-            marginBottom: "20px",
+            marginBottom: "20px"
           }}
         >
-          Logged in as {auth.user.profile.email}
+          <p style={{ color: "#666" }}>
+            Logged in as {auth.user.profile.email}
+          </p>
         </div>
 
-        {/* SEARCH + SORT */}
-        <div
-          style={{
-            background: "white",
-            padding: "20px",
-            borderRadius: "8px",
-            marginBottom: "20px",
-            display: "flex",
-            gap: "20px",
-          }}
-        >
-          <input
-            type="text"
-            placeholder="Search by RA, dorm, room, notes..."
-            value={searchQuery}
-            onChange={(e) => {
-              setSearchQuery(e.target.value);
-              setPage(1);
-            }}
-            style={{
-              flex: 1,
-              padding: "12px",
-              borderRadius: "6px",
-              border: "1px solid #ccc",
-            }}
+        {loading && selectedSection === "reports" ? (
+          <p>Loading reports...</p>
+        ) : selectedSection === "reports" ? (
+          <ViewUploads
+            uploads={uploads}
+            search={search}
+            setSearch={setSearch}
+            selectedDorm={selectedDorm}
+            setSelectedDorm={setSelectedDorm}
+            page={page}
+            setPage={setPage}
+            PER_PAGE={PER_PAGE}
+            DORMS={DORMS}
           />
-
-          <select
-            value={sortOption}
-            onChange={(e) => {
-              setSortOption(e.target.value);
-              setPage(1);
-            }}
-            style={{
-              padding: "12px",
-              borderRadius: "6px",
-              border: "1px solid #ccc",
-              background: "white",
-            }}
-          >
-            <option value="newest">Newest First</option>
-            <option value="oldest">Oldest First</option>
-            <option value="roomAZ">Room Number (A → Z)</option>
-            <option value="roomZA">Room Number (Z → A)</option>
-            <option value="raAZ">RA Name (A → Z)</option>
-            <option value="raZA">RA Name (Z → A)</option>
-          </select>
-        </div>
-
-        {/* REPORTS LIST */}
-        <div
-          style={{
-            background: "white",
-            padding: "20px",
-            borderRadius: "8px",
-          }}
-        >
-          <h2>
-            {selectedDorm === "All"
-              ? "All Uploaded Reports"
-              : `${selectedDorm} Reports`}
-          </h2>
-
-          <hr style={{ margin: "20px 0" }} />
-
-          {loading ? (
-            <p>Loading reports...</p>
-          ) : (
-            <>
-              <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-                {paginated.map((item, idx) => (
-                  <div
-                    key={idx}
-                    style={{
-                      border: "1px solid #ddd",
-                      borderRadius: "8px",
-                      padding: "16px",
-                      background: "#fafafa",
-                    }}
-                  >
-                    <p>
-                      <strong>RA:</strong> {item.uploadedByName}
-                    </p>
-                    <p>
-                      <strong>Dorm:</strong> {item.dorm}
-                    </p>
-                    <p>
-                      <strong>Room:</strong> {item.room}
-                    </p>
-                    <p>
-                      <strong>Inspection Status:</strong> {item.inspectionStatus}
-                    </p>
-                    <p>
-                      <strong>Maintenance Issues:</strong>{" "}
-                      {JSON.parse(item.maintenanceIssues).join(", ") || "None"}
-                    </p>
-                    <p>
-                      <strong>Resident:</strong> {item.residentName} (
-                      {item.residentJNumber})
-                    </p>
-                    <p>
-                      <strong>Email:</strong> {item.residentEmail}
-                    </p>
-                    <p>
-                      <strong>Notes:</strong> {item.notes}
-                    </p>
-                    <p>
-                      <strong>Submitted:</strong> {formatDate(item.uploadedAt)}
-                    </p>
-
-                    {/* MULTIPLE IMAGES */}
-                    <div
-                      style={{
-                        display: "flex",
-                        gap: "12px",
-                        flexWrap: "wrap",
-                        marginTop: "10px",
-                      }}
-                    >
-                      <a href={item.imageUrl} target="_blank" rel="noreferrer">
-                        <img
-                          src={item.imageUrl}
-                          alt="preview"
-                          style={{
-                            width: "150px",
-                            height: "150px",
-                            objectFit: "cover",
-                            borderRadius: "6px",
-                          }}
-                        />
-                      </a>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              {/* PAGINATION */}
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "center",
-                  marginTop: "20px",
-                  gap: "10px",
-                }}
-              >
-                <button
-                  disabled={page === 1}
-                  onClick={() => setPage(page - 1)}
-                  style={{
-                    padding: "8px 12px",
-                    borderRadius: "6px",
-                    border: "1px solid #ccc",
-                    background: page === 1 ? "#eee" : "white",
-                  }}
-                >
-                  Previous
-                </button>
-
-                <span style={{ padding: "8px 12px" }}>
-                  Page {page} of {totalPages || 1}
-                </span>
-
-                <button
-                  disabled={page === totalPages}
-                  onClick={() => setPage(page + 1)}
-                  style={{
-                    padding: "8px 12px",
-                    borderRadius: "6px",
-                    border: "1px solid #ccc",
-                    background: page === totalPages ? "#eee" : "white",
-                  }}
-                >
-                  Next
-                </button>
-              </div>
-            </>
-          )}
-        </div>
+        ) : userAction === "add" ? (
+          <AddUserForm
+            onCreateUser={handleCreateUser}
+            creating={creatingUser}
+            error={createError}
+            dorms={DORMS}
+          />
+        ) : (
+          <ManageUsersTable />
+        )}
       </div>
     </div>
   );

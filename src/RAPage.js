@@ -1,8 +1,7 @@
 import { useState } from "react";
 import { useAuth } from "react-oidc-context";
 
-const API_URL =
-  "https://s8h2e5f2j0.execute-api.us-east-2.amazonaws.com/prod/upload";
+const API_URL = "https://ndd3vawb71.execute-api.us-east-2.amazonaws.com/prod/upload";
 
 const DORMS = [
   "Alexander Hall",
@@ -155,7 +154,6 @@ export default function RAPage() {
 <h2 style={{ textAlign: "center", marginTop: "10px", color: "#333" }}>
   Hey {auth.user?.profile?.given_name}
 </h2>
-
 
         {toast && (
           <div
@@ -487,3 +485,5 @@ export default function RAPage() {
     </div>
   );
 }
+
+
