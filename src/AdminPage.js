@@ -30,6 +30,7 @@ export default function AdminPage() {
   // REPORTS STATE
   const [uploads, setUploads] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null); // NEW
   const [search, setSearch] = useState("");
   const [selectedDorm, setSelectedDorm] = useState("All");
   const [page, setPage] = useState(1);
@@ -47,10 +48,13 @@ export default function AdminPage() {
   useEffect(() => {
     async function load() {
       try {
+        setLoading(true);
+        setLoadError(null);
         const items = await getUploads(auth.user.id_token);
         setUploads(items);
       } catch (err) {
         console.error("Error loading uploads:", err);
+        setLoadError(err.message); // NEW - Show user-friendly error
       } finally {
         setLoading(false);
       }
@@ -59,7 +63,20 @@ export default function AdminPage() {
     if (auth.isAuthenticated) load();
   }, [auth.isAuthenticated, auth.user]);
 
-  if (!auth.isAuthenticated) return <p>Loading...</p>;
+  if (!auth.isAuthenticated) {
+    return (
+      <div style={{ 
+        display: "flex", 
+        justifyContent: "center", 
+        alignItems: "center", 
+        height: "100vh",
+        fontSize: "18px",
+        color: "#666"
+      }}>
+        Loading authentication...
+      </div>
+    );
+  }
 
   const handleCreateUser = async (formData) => {
     setCreatingUser(true);
@@ -67,10 +84,12 @@ export default function AdminPage() {
 
     try {
       await createUser(formData);
+      alert("✅ User created successfully!");
       setSelectedSection("users");
       setUserAction("view");
     } catch (err) {
       setCreateError(err.message);
+      console.error("Create user error:", err);
     } finally {
       setCreatingUser(false);
     }
@@ -84,27 +103,33 @@ export default function AdminPage() {
     setDeleting(true);
     
     try {
-      // Extract the data we need
       const userId = upload.uploadedByUserId;
       const timestamp = upload.uploadedAt;
       const imageKey = upload.imageKey;
 
-      console.log("Deleting upload:", { userId, timestamp, imageKey });
-
-      // Call the API
       await deleteUpload(userId, timestamp, imageKey, auth.user.id_token);
       
       // Remove from local state
       setUploads((prev) => prev.filter((u) => u.uploadedAt !== timestamp));
       
-      alert("Upload deleted successfully!");
+      alert("✅ Upload deleted successfully!");
       
     } catch (err) {
       console.error("Delete failed:", err);
-      alert("Failed to delete upload: " + err.message);
+      alert(`❌ Delete Failed\n\n${err.message}`); // NEW - Better error message
     } finally {
       setDeleting(false);
     }
+  };
+
+  // Retry function for failed loads
+  const handleRetry = () => {
+    setLoadError(null);
+    setLoading(true);
+    getUploads(auth.user.id_token)
+      .then(items => setUploads(items))
+      .catch(err => setLoadError(err.message))
+      .finally(() => setLoading(false));
   };
 
   // FILTER UPLOADS BY DORM
@@ -305,8 +330,59 @@ export default function AdminPage() {
           </p>
         </div>
 
+        {/* LOADING STATE */}
         {loading && selectedSection === "reports" ? (
-          <p>Loading reports...</p>
+          <div style={{
+            background: "white",
+            padding: "60px 20px",
+            borderRadius: "8px",
+            textAlign: "center"
+          }}>
+            <div style={{
+              width: "50px",
+              height: "50px",
+              border: "4px solid #f3f3f3",
+              borderTop: "4px solid #3498db",
+              borderRadius: "50%",
+              margin: "0 auto 20px auto",
+              animation: "spin 1s linear infinite"
+            }}></div>
+            <p style={{ color: "#666", fontSize: "16px" }}>Loading reports...</p>
+            <style>{`
+              @keyframes spin {
+                0% { transform: rotate(0deg); }
+                100% { transform: rotate(360deg); }
+              }
+            `}</style>
+          </div>
+        ) : loadError && selectedSection === "reports" ? (
+          /* ERROR STATE */
+          <div style={{
+            background: "#fee",
+            border: "2px solid #fcc",
+            padding: "30px",
+            borderRadius: "8px",
+            textAlign: "center"
+          }}>
+            <div style={{ fontSize: "48px", marginBottom: "10px" }}>❌</div>
+            <h3 style={{ color: "#c00", marginBottom: "10px" }}>Failed to Load Reports</h3>
+            <p style={{ color: "#666", marginBottom: "20px" }}>{loadError}</p>
+            <button
+              onClick={handleRetry}
+              style={{
+                padding: "10px 20px",
+                background: "#3498db",
+                color: "white",
+                border: "none",
+                borderRadius: "6px",
+                cursor: "pointer",
+                fontSize: "14px",
+                fontWeight: "600"
+              }}
+            >
+              🔄 Retry
+            </button>
+          </div>
         ) : selectedSection === "reports" ? (
           <ViewUploads
             uploads={filteredUploads}
