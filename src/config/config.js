@@ -9,9 +9,9 @@ const config = {
     region: process.env.REACT_APP_REGION || 'us-east-2'
   },
 
-  // AWS API Gateway - FIXED: Use correct URL
+  // AWS API Gateway - FIXED: Correct URL with 'l' not '1'
   api: {
-    baseUrl: process.env.REACT_APP_API_URL || 'https://1snro81xg1.execute-api.us-east-2.amazonaws.com/prod',
+    baseUrl: process.env.REACT_APP_API_URL || 'https://lsnro81xgl.execute-api.us-east-2.amazonaws.com/prod',
     endpoints: {
       uploadRoom: '/upload-room',
       getUploads: '/admin/get-uploads',
