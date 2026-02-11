@@ -1,7 +1,7 @@
-// AdminPage.jsx
+// AdminPage.jsx - FIXED VERSION
 
 import { useState, useEffect } from "react";
-import { useAuth } from "react-oidc-context";
+import { useAuth } from "../../contexts/AuthContext"; // FIXED: Changed from react-oidc-context
 
 import AddUserForm from "./AddUserForm";
 import ManageUsersTable from "./ManageUsersTable";
@@ -75,7 +75,7 @@ const DownloadIcon = ({ size = 18, color = "#fff" }) => (
 );
 
 export default function AdminPage() {
-  const auth = useAuth();
+  const { isAuthenticated, user, loading, logout } = useAuth(); // FIXED: Use AuthContext
 
   // SECTION STATE
   const [selectedSection, setSelectedSection] = useState("reports");
@@ -87,7 +87,7 @@ export default function AdminPage() {
 
   // REPORTS STATE
   const [uploads, setUploads] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loadingUploads, setLoadingUploads] = useState(true);
   const [loadError, setLoadError] = useState(null);
   const [search, setSearch] = useState("");
   const [selectedDorm, setSelectedDorm] = useState("All");
@@ -103,38 +103,62 @@ export default function AdminPage() {
   const [deleting, setDeleting] = useState(false);
 
   // FETCH UPLOADS
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     async function load() {
       try {
-        setLoading(true);
+        setLoadingUploads(true);
         setLoadError(null);
-        const items = await getUploads(auth.user.id_token);
+        const items = await getUploads(user.id_token); // FIXED: Use user.id_token from AuthContext
         setUploads(items);
       } catch (err) {
         console.error("Error loading uploads:", err);
         setLoadError(err.message);
       } finally {
-        setLoading(false);
+        setLoadingUploads(false);
       }
     }
 
-    if (auth.isAuthenticated) load();
-  }, [auth.isAuthenticated, auth.user]);
+    if (isAuthenticated && user) { // FIXED: Check isAuthenticated and user
+      load();
+    }
+  }, [isAuthenticated, user]); // FIXED: Updated dependencies
 
-  if (!auth.isAuthenticated) {
+  // FIXED: Better loading state
+  if (loading) {
     return (
       <div style={{ 
         display: "flex", 
         justifyContent: "center", 
         alignItems: "center", 
         height: "100vh",
-        fontSize: "18px",
-        color: "#666"
+        flexDirection: "column",
+        gap: "20px"
       }}>
-        Loading authentication...
+        <div style={{
+          width: "50px",
+          height: "50px",
+          border: "4px solid #f3f3f3",
+          borderTop: "4px solid #3498db",
+          borderRadius: "50%",
+          animation: "spin 1s linear infinite"
+        }}></div>
+        <div style={{ fontSize: "18px", color: "#666" }}>
+          Loading authentication...
+        </div>
+        <style>{`
+          @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+          }
+        `}</style>
       </div>
     );
+  }
+
+  // FIXED: Redirect to login if not authenticated
+  if (!isAuthenticated) {
+    window.location.href = "/login";
+    return null;
   }
 
   const handleCreateUser = async (formData) => {
@@ -166,7 +190,7 @@ export default function AdminPage() {
       const timestamp = upload.uploadedAt;
       const imageKey = upload.imageKey;
 
-      await deleteUpload(userId, timestamp, imageKey, auth.user.id_token);
+      await deleteUpload(userId, timestamp, imageKey, user.id_token); // FIXED: Use user.id_token
       
       setUploads((prev) => prev.filter((u) => u.uploadedAt !== timestamp));
       
@@ -182,11 +206,11 @@ export default function AdminPage() {
 
   const handleRetry = () => {
     setLoadError(null);
-    setLoading(true);
-    getUploads(auth.user.id_token)
+    setLoadingUploads(true);
+    getUploads(user.id_token) // FIXED: Use user.id_token
       .then(items => setUploads(items))
       .catch(err => setLoadError(err.message))
-      .finally(() => setLoading(false));
+      .finally(() => setLoadingUploads(false));
   };
 
   // Handle menu item click - close mobile sidebar
@@ -203,7 +227,7 @@ export default function AdminPage() {
       ? uploads
       : uploads.filter((u) => u.dorm === selectedDorm);
 
-  // CSV EXPORT FUNCTION - NO STATUS COLUMN
+  // CSV EXPORT FUNCTION
   const handleExportCSV = () => {
     // Get the filtered data
     const dataToExport = filteredUploads;
@@ -213,7 +237,7 @@ export default function AdminPage() {
       return;
     }
 
-    // Define CSV headers - INCLUDES INSPECTION STATUS
+    // Define CSV headers
     const headers = [
       "Dorm",
       "Room",
@@ -248,7 +272,6 @@ export default function AdminPage() {
           return stringValue;
         };
 
-        // INCLUDES INSPECTION STATUS (Passed/Failed/Maintenance Concern)
         return [
           escapeCsvValue(upload.dorm),
           escapeCsvValue(upload.room),
@@ -285,6 +308,9 @@ export default function AdminPage() {
 
   // Determine sidebar width
   const sidebarWidth = sidebarCollapsed ? "60px" : "280px";
+
+  // FIXED: Get user email from AuthContext
+  const userEmail = user?.attributes?.email || user?.username || "";
 
   return (
     <div style={{ display: "flex", height: "100vh", background: "#f3f4f6", position: "relative" }}>
@@ -479,10 +505,10 @@ export default function AdminPage() {
               </div>
             </div>
 
-            {/* SIGN OUT */}
+            {/* SIGN OUT - FIXED: Use logout from AuthContext */}
             <div style={{ marginTop: "30px" }}>
               <button
-                onClick={() => auth.removeUser()}
+                onClick={logout}
                 style={{
                   width: "100%",
                   padding: "10px",
@@ -533,7 +559,7 @@ export default function AdminPage() {
               <UsersIcon size={24} color={selectedSection === "users" ? "#0066ff" : "#333"} />
             </div>
             <div
-              onClick={() => auth.removeUser()}
+              onClick={logout}
               style={{
                 cursor: "pointer",
                 padding: "8px",
@@ -611,7 +637,7 @@ export default function AdminPage() {
             : "User Management"}
         </h2>
 
-        {/* Logged in info */}
+        {/* Logged in info - FIXED: Use userEmail from AuthContext */}
         <div
           style={{
             background: "white",
@@ -621,12 +647,12 @@ export default function AdminPage() {
           }}
         >
           <p style={{ color: "#666", margin: 0, fontSize: "14px", wordBreak: "break-word" }}>
-            Logged in as {auth.user.profile.email}
+            Logged in as {userEmail}
           </p>
         </div>
 
         {/* CSV EXPORT BUTTON - Only show on reports section */}
-        {selectedSection === "reports" && !loading && !loadError && (
+        {selectedSection === "reports" && !loadingUploads && !loadError && (
           <div style={{ marginBottom: "20px", display: "flex", justifyContent: "flex-end" }}>
             <button
               onClick={handleExportCSV}
@@ -663,7 +689,7 @@ export default function AdminPage() {
         )}
 
         {/* LOADING STATE */}
-        {loading && selectedSection === "reports" ? (
+        {loadingUploads && selectedSection === "reports" ? (
           <div style={{
             background: "white",
             padding: "60px 20px",

@@ -1,125 +1,146 @@
+// ManageUsersTable.jsx - FIXED VERSION
+// Uses backend API instead of direct DynamoDB access
+
 import React, { useEffect, useState } from "react";
-import {
-  DynamoDBClient,
-  ScanCommand
-} from "@aws-sdk/client-dynamodb";
-import { fromCognitoIdentityPool } from "@aws-sdk/credential-provider-cognito-identity";
-import { useAuth } from "react-oidc-context";
-import useDeleteUser from "./DeleteUser";
+import { useAuth } from "../../contexts/AuthContext"; // FIXED: Changed from react-oidc-context
+import { getUsers, deleteUser } from "../../utils/api";
 
 export default function ManageUsersTable() {
-  const auth = useAuth();
-  const { deleteUser } = useDeleteUser();
+  const { isAuthenticated, user, loading: authLoading } = useAuth(); // FIXED: Use AuthContext
 
-  const [admins, setAdmins] = useState([]);
-  const [ras, setRAs] = useState([]);
+  const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [view, setView] = useState("admins");
+  const [deleting, setDeleting] = useState(false);
 
   const [currentPage, setCurrentPage] = useState(1);
   const USERS_PER_PAGE = 5;
 
-  const REGION = "us-east-2";
-  const TABLE_NAME = "RoomCheckUsers";
-  const IDENTITY_POOL_ID = "us-east-2:0d00064d-9170-417c-862e-316009584b52";
-
-  async function getCredentials() {
-    const idToken = auth.user?.id_token;
-    if (!idToken) throw new Error("No ID token available");
-
-    return fromCognitoIdentityPool({
-      clientConfig: { region: REGION },
-      identityPoolId: IDENTITY_POOL_ID,
-      logins: {
-        [`cognito-idp.${REGION}.amazonaws.com/us-east-2_lk1vd8Mwx`]: idToken
-      }
-    });
-  }
-
   useEffect(() => {
     async function fetchUsers() {
       try {
-        const credentials = await getCredentials();
-
-        const client = new DynamoDBClient({
-          region: REGION,
-          credentials
-        });
-
-        const response = await client.send(
-          new ScanCommand({ TableName: TABLE_NAME })
-        );
-
-        const items = response.Items || [];
-
-        // ⭐ FILTER OUT NON-USER ITEMS
-        const userItems = items.filter(item =>
-          item.userId &&
-          item.email &&
-          item.firstName &&
-          item.lastName &&
-          item.role
-        );
-
-        const formatted = userItems.map((item) => ({
-          userId: item.userId.S,
-          createdAt: item.createdAt?.S || "",
-          email: item.email.S,
-          firstName: item.firstName.S,
-          lastName: item.lastName.S,
-          role: item.role.S,
-          dorm: item.dorm?.S || ""
-        }));
-
-        setAdmins(formatted.filter((u) => u.role.toLowerCase().includes("admin")));
-        setRAs(formatted.filter((u) => u.role.toLowerCase().includes("ra")));
+        setLoading(true);
+        setError(null);
+        
+        const fetchedUsers = await getUsers(user.id_token); // FIXED: Use user.id_token
+        setUsers(fetchedUsers);
       } catch (err) {
         console.error("Error fetching users:", err);
+        setError(err.message);
       } finally {
         setLoading(false);
       }
     }
 
-    if (auth.isAuthenticated) {
+    if (isAuthenticated && user) { // FIXED: Check both
       fetchUsers();
     } else {
       setLoading(false);
     }
-  }, [auth.isAuthenticated]);
+  }, [isAuthenticated, user]); // FIXED: Updated dependencies
 
   function paginate(list) {
     const start = (currentPage - 1) * USERS_PER_PAGE;
     return list.slice(start, start + USERS_PER_PAGE);
   }
 
-  async function handleDelete(userId, email) {
-    const confirmed = window.confirm(`Delete user ${email}?`);
+  async function handleDelete(username, email) {
+    const confirmed = window.confirm(
+      `Are you sure you want to delete user ${email}?\n\nThis action cannot be undone.`
+    );
     if (!confirmed) return;
 
-    const result = await deleteUser(userId, email);
-
-    if (result.success) {
-      alert("User deleted");
-      setTimeout(() => window.location.reload(), 300);
-    } else {
-      alert("Error deleting user: " + result.error);
+    setDeleting(true);
+    
+    try {
+      await deleteUser(username, user.id_token); // FIXED: Use user.id_token
+      
+      // Remove from local state
+      setUsers(prev => prev.filter(u => u.username !== username));
+      
+      alert("✓ User deleted successfully");
+    } catch (err) {
+      console.error("Delete error:", err);
+      alert(`✗ Failed to delete user\n\n${err.message}`);
+    } finally {
+      setDeleting(false);
     }
   }
 
   function handleEdit(user) {
-    alert("Edit user feature coming next");
+    alert("Edit user feature coming soon");
   }
 
-  if (loading) {
-    return <p>Loading users…</p>;
+  if (authLoading || loading) {
+    return (
+      <div style={{ 
+        background: "white", 
+        padding: 60, 
+        borderRadius: 8,
+        textAlign: "center"
+      }}>
+        <div style={{
+          width: "50px",
+          height: "50px",
+          border: "4px solid #f3f3f3",
+          borderTop: "4px solid #3498db",
+          borderRadius: "50%",
+          margin: "0 auto 20px auto",
+          animation: "spin 1s linear infinite"
+        }}></div>
+        <p style={{ color: "#666" }}>Loading users...</p>
+        <style>{`
+          @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+          }
+        `}</style>
+      </div>
+    );
   }
+
+  if (error) {
+    return (
+      <div style={{
+        background: "#fee",
+        border: "2px solid #fcc",
+        padding: 30,
+        borderRadius: 8,
+        textAlign: "center"
+      }}>
+        <div style={{ fontSize: 48, marginBottom: 10 }}>✗</div>
+        <h3 style={{ color: "#c00", marginBottom: 10 }}>Failed to Load Users</h3>
+        <p style={{ color: "#666", marginBottom: 20 }}>{error}</p>
+        <button
+          onClick={() => window.location.reload()}
+          style={{
+            padding: "10px 20px",
+            background: "#3498db",
+            color: "white",
+            border: "none",
+            borderRadius: 6,
+            cursor: "pointer",
+            fontSize: 14,
+            fontWeight: 600
+          }}
+        >
+          Retry
+        </button>
+      </div>
+    );
+  }
+
+  const admins = users.filter((u) => u.role?.toLowerCase().includes("admin"));
+  const ras = users.filter((u) => u.role?.toLowerCase().includes("ra"));
 
   const buttonStyle = {
     padding: "6px 12px",
     borderRadius: 6,
     border: "1px solid #ccc",
     background: "#f7f7f7",
-    cursor: "pointer"
+    cursor: "pointer",
+    fontSize: "14px"
   };
 
   const dangerButtonStyle = {
@@ -149,7 +170,7 @@ export default function ManageUsersTable() {
 
   return (
     <div style={{ background: "white", padding: 20, borderRadius: 8 }}>
-      <h2>Manage Users</h2>
+      <h2 style={{ marginBottom: 20 }}>Manage Users</h2>
 
       <div style={{ marginBottom: 20 }}>
         <button
@@ -159,7 +180,7 @@ export default function ManageUsersTable() {
           }}
           style={view === "admins" ? primaryButtonStyle : buttonStyle}
         >
-          View Admins
+          View Admins ({admins.length})
         </button>
 
         <button
@@ -167,77 +188,142 @@ export default function ManageUsersTable() {
             setView("ras");
             setCurrentPage(1);
           }}
-          style={{ marginLeft: 10, ...(view === "ras" ? primaryButtonStyle : buttonStyle) }}
+          style={{ 
+            marginLeft: 10, 
+            ...(view === "ras" ? primaryButtonStyle : buttonStyle) 
+          }}
         >
-          View RAs
+          View RAs ({ras.length})
         </button>
       </div>
 
-      <h3>{view === "admins" ? "Admins" : "Resident Assistants"}</h3>
+      <h3 style={{ marginBottom: 15 }}>
+        {view === "admins" ? "Administrators" : "Resident Assistants"}
+      </h3>
 
       {list.length === 0 ? (
-        <p>No users found.</p>
+        <p style={{ color: "#666", padding: 20 }}>
+          No {view === "admins" ? "administrators" : "RAs"} found.
+        </p>
       ) : (
         <>
-          <table
-            style={{
-              width: "100%",
-              borderCollapse: "separate",
-              borderSpacing: "0 8px"
-            }}
-          >
-            <thead>
-              <tr>
-                <th style={tableCellStyle}>First Name</th>
-                <th style={tableCellStyle}>Last Name</th>
-                <th style={tableCellStyle}>Email</th>
-                {view === "ras" && <th style={tableCellStyle}>Dorm</th>}
-                <th style={tableCellStyle}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {paginate(list).map((u, index) => (
-                <tr key={index} style={tableRowStyle}>
-                  <td style={tableCellStyle}>{u.firstName}</td>
-                  <td style={tableCellStyle}>{u.lastName}</td>
-                  <td style={tableCellStyle}>{u.email}</td>
-                  {view === "ras" && <td style={tableCellStyle}>{u.dorm}</td>}
-                  <td style={tableCellStyle}>
-                    <button
-                      onClick={() => handleEdit(u)}
-                      style={{ ...buttonStyle, marginRight: 10 }}
-                    >
-                      Edit information
-                    </button>
-                    <button
-                      onClick={() => handleDelete(u.userId, u.email)}
-                      style={dangerButtonStyle}
-                    >
-                      Delete this user
-                    </button>
-                  </td>
+          <div style={{ overflowX: "auto" }}>
+            <table
+              style={{
+                width: "100%",
+                borderCollapse: "separate",
+                borderSpacing: "0 8px",
+                minWidth: "600px"
+              }}
+            >
+              <thead>
+                <tr style={{ textAlign: "left" }}>
+                  <th style={tableCellStyle}>Email</th>
+                  {view === "ras" && <th style={tableCellStyle}>Dorm</th>}
+                  <th style={tableCellStyle}>Role</th>
+                  <th style={tableCellStyle}>Status</th>
+                  <th style={tableCellStyle}>Actions</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-
-          <div style={{ marginTop: 15 }}>
-            <button
-              disabled={currentPage === 1}
-              onClick={() => setCurrentPage(currentPage - 1)}
-              style={{ ...buttonStyle, marginRight: 10 }}
-            >
-              Previous
-            </button>
-
-            <button
-              disabled={currentPage * USERS_PER_PAGE >= list.length}
-              onClick={() => setCurrentPage(currentPage + 1)}
-              style={buttonStyle}
-            >
-              Next
-            </button>
+              </thead>
+              <tbody>
+                {paginate(list).map((u, index) => (
+                  <tr key={u.username || index} style={tableRowStyle}>
+                    <td style={tableCellStyle}>{u.email || u.username}</td>
+                    {view === "ras" && (
+                      <td style={tableCellStyle}>{u.dorm || "-"}</td>
+                    )}
+                    <td style={tableCellStyle}>
+                      <span style={{
+                        padding: "4px 8px",
+                        borderRadius: 4,
+                        background: u.role?.toLowerCase().includes("admin") ? "#e3f2fd" : "#fff3e0",
+                        fontSize: 12,
+                        fontWeight: 500
+                      }}>
+                        {u.role || "Unknown"}
+                      </span>
+                    </td>
+                    <td style={tableCellStyle}>
+                      <span style={{
+                        padding: "4px 8px",
+                        borderRadius: 4,
+                        background: u.enabled ? "#e8f5e9" : "#ffebee",
+                        color: u.enabled ? "#2e7d32" : "#c62828",
+                        fontSize: 12,
+                        fontWeight: 500
+                      }}>
+                        {u.enabled ? "Active" : "Disabled"}
+                      </span>
+                    </td>
+                    <td style={tableCellStyle}>
+                      <div style={{ 
+                        display: "flex", 
+                        gap: 10,
+                        flexWrap: "wrap"
+                      }}>
+                        <button
+                          onClick={() => handleEdit(u)}
+                          style={buttonStyle}
+                        >
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => handleDelete(u.username, u.email)}
+                          disabled={deleting}
+                          style={{
+                            ...dangerButtonStyle,
+                            opacity: deleting ? 0.6 : 1,
+                            cursor: deleting ? "not-allowed" : "pointer"
+                          }}
+                        >
+                          {deleting ? "Deleting..." : "Delete"}
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
+
+          {/* Pagination */}
+          {list.length > USERS_PER_PAGE && (
+            <div style={{ 
+              marginTop: 20, 
+              display: "flex", 
+              justifyContent: "center",
+              alignItems: "center",
+              gap: 10
+            }}>
+              <button
+                disabled={currentPage === 1}
+                onClick={() => setCurrentPage(currentPage - 1)}
+                style={{
+                  ...buttonStyle,
+                  opacity: currentPage === 1 ? 0.5 : 1,
+                  cursor: currentPage === 1 ? "not-allowed" : "pointer"
+                }}
+              >
+                Previous
+              </button>
+
+              <span style={{ fontSize: 14, color: "#666" }}>
+                Page {currentPage} of {Math.ceil(list.length / USERS_PER_PAGE)}
+              </span>
+
+              <button
+                disabled={currentPage * USERS_PER_PAGE >= list.length}
+                onClick={() => setCurrentPage(currentPage + 1)}
+                style={{
+                  ...buttonStyle,
+                  opacity: currentPage * USERS_PER_PAGE >= list.length ? 0.5 : 1,
+                  cursor: currentPage * USERS_PER_PAGE >= list.length ? "not-allowed" : "pointer"
+                }}
+              >
+                Next
+              </button>
+            </div>
+          )}
         </>
       )}
     </div>

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useAuth } from "react-oidc-context";
+import { useAuth } from "../../contexts/AuthContext"; // FIXED: Changed from react-oidc-context
 import { uploadRoom } from "../../utils/api";
 
 const DORMS = [
@@ -54,7 +54,7 @@ function getErrorMessage(error) {
 }
 
 export default function RAPage() {
-  const auth = useAuth();
+  const { isAuthenticated, user, loading, logout } = useAuth(); // FIXED: Use AuthContext
   const [dorm, setDorm] = useState("");
   const [room, setRoom] = useState("");
   const [notes, setNotes] = useState("");
@@ -74,7 +74,9 @@ export default function RAPage() {
   const [uploadedByName, setUploadedByName] = useState("");
   const [isEditingRAName, setIsEditingRAName] = useState(false);
 
-  const uploadedByUserId = auth.user?.profile?.sub;
+  // FIXED: Get user data from AuthContext
+  const uploadedByUserId = user?.username;
+  const userEmail = user?.attributes?.email || user?.username || "";
 
   const validateForm = () => {
     const newErrors = {};
@@ -213,7 +215,8 @@ export default function RAPage() {
         failureReasons: inspectionStatus === "Failed" ? failureReasons : [],
       };
 
-      const result = await uploadRoom(formData, auth.user.id_token);
+      // FIXED: Use user.id_token from AuthContext
+      const result = await uploadRoom(formData, user.id_token);
       return result;
     } catch (error) {
       throw error;
@@ -300,7 +303,41 @@ export default function RAPage() {
     }
   };
 
-  if (!auth.isAuthenticated) return <p>Loading...</p>;
+  // FIXED: Proper loading state
+  if (loading) {
+    return (
+      <div style={{ 
+        display: "flex", 
+        justifyContent: "center", 
+        alignItems: "center", 
+        height: "100vh",
+        flexDirection: "column",
+        gap: "20px"
+      }}>
+        <div style={{
+          width: "50px",
+          height: "50px",
+          border: "4px solid #f3f3f3",
+          borderTop: "4px solid #3498db",
+          borderRadius: "50%",
+          animation: "spin 1s linear infinite"
+        }}></div>
+        <div>Loading...</div>
+        <style>{`
+          @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+          }
+        `}</style>
+      </div>
+    );
+  }
+
+  // FIXED: Redirect to login if not authenticated
+  if (!isAuthenticated) {
+    window.location.href = "/login";
+    return null;
+  }
 
   return (
     <div style={{ 
@@ -360,7 +397,7 @@ export default function RAPage() {
             fontSize: "14px",
             wordBreak: "break-word"
           }}>
-            Logged in as {auth.user.profile.email}
+            Logged in as {userEmail}
           </p>
           
           {/* Manual RA Name Entry */}
@@ -1036,9 +1073,9 @@ export default function RAPage() {
           {uploading ? "Uploading..." : "Upload"}
         </button>
         
-        {/* Sign Out */}
+        {/* Sign Out - FIXED: Use logout from AuthContext */}
         <button
-          onClick={() => auth.removeUser()}
+          onClick={logout}
           style={{
             width: "100%",
             marginTop: "12px",
