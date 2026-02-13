@@ -2,16 +2,18 @@ import DOMPurify from 'dompurify';
 import config from '../config/config';
 
 const API_BASE_URL = config.api.baseUrl;
-const MAX_RETRIES = config.api.retries;
-const TIMEOUT = config.api.timeout;
+const MAX_RETRIES = config.api.retries || 3;
+const TIMEOUT = config.api.timeout || 30000;
 
-// Utility function for exponential backoff
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-// Sanitize input to prevent XSS
+// Simplified sanitization - DOMPurify can cause issues with complex objects
 const sanitizeInput = (input) => {
   if (typeof input === 'string') {
     return DOMPurify.sanitize(input);
+  }
+  if (Array.isArray(input)) {
+    return input.map(item => sanitizeInput(item));
   }
   if (typeof input === 'object' && input !== null) {
     const sanitized = {};
@@ -23,16 +25,11 @@ const sanitizeInput = (input) => {
   return input;
 };
 
-// Enhanced fetch with timeout
 const fetchWithTimeout = async (url, options = {}) => {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), TIMEOUT);
-
   try {
-    const response = await fetch(url, {
-      ...options,
-      signal: controller.signal
-    });
+    const response = await fetch(url, { ...options, signal: controller.signal });
     clearTimeout(timeoutId);
     return response;
   } catch (error) {
@@ -44,99 +41,142 @@ const fetchWithTimeout = async (url, options = {}) => {
   }
 };
 
-// Enhanced API call with retry logic
 const apiCall = async (url, options = {}, retries = MAX_RETRIES) => {
+  let lastError;
+  
   for (let i = 0; i < retries; i++) {
     try {
       const response = await fetchWithTimeout(url, options);
-      
-      // If successful, return response
+
+      // Success - return immediately
       if (response.ok) {
         return response;
       }
 
-      // If 4xx error (client error), don't retry
+      // Client errors (4xx) - don't retry
       if (response.status >= 400 && response.status < 500) {
         const errorData = await response.json().catch(() => ({}));
         throw new Error(errorData.message || `Error: ${response.status} ${response.statusText}`);
       }
 
-      // If 5xx error (server error) and not last retry, retry with backoff
+      // Server errors (5xx) - retry with backoff
       if (i < retries - 1) {
-        const backoffTime = Math.min(1000 * Math.pow(2, i), 10000); // Max 10 seconds
+        const backoffTime = Math.min(1000 * Math.pow(2, i), 10000);
         console.log(`Retry attempt ${i + 1} after ${backoffTime}ms`);
         await sleep(backoffTime);
         continue;
       }
 
-      // Last retry failed
       throw new Error(`Server error: ${response.status} ${response.statusText}`);
     } catch (error) {
-      // If network error and not last retry, retry with backoff
-      if (i < retries - 1 && (error.message.includes('timeout') || error.message.includes('fetch'))) {
+      lastError = error;
+      
+      // Don't retry client errors
+      if (error.message.includes('Error: 4')) {
+        throw error;
+      }
+      
+      // Retry network errors
+      if (i < retries - 1 && (error.message.includes('timeout') || error.message.includes('fetch') || error.message.includes('NetworkError'))) {
         const backoffTime = Math.min(1000 * Math.pow(2, i), 10000);
         console.log(`Retry attempt ${i + 1} after ${backoffTime}ms due to: ${error.message}`);
         await sleep(backoffTime);
         continue;
       }
-
-      // Log error to backend if enabled
-      if (config.errorLogging.enabled && config.errorLogging.logToBackend) {
-        logError(error, { url, options }).catch(console.error);
-      }
-
+      
       throw error;
     }
   }
+  
+  throw lastError || new Error('Request failed after retries');
 };
 
-// Log errors to backend
 export const logError = async (error, context = {}) => {
-  if (!config.errorLogging.enabled) return;
-
+  if (!config.errorLogging?.enabled) return;
   try {
     const errorData = {
       message: error.message || 'Unknown error',
       stack: error.stack || '',
-      context: sanitizeInput(context),
+      context: context,
       userAgent: navigator.userAgent,
       url: window.location.href,
       timestamp: new Date().toISOString()
     };
-
-    // Log to console in development
     if (config.errorLogging.logToConsole) {
       console.error('Error logged:', errorData);
-    }
-
-    // Log to backend
-    if (config.errorLogging.logToBackend) {
-      await fetchWithTimeout(`${API_BASE_URL}${config.api.endpoints.logError}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(errorData)
-      });
     }
   } catch (err) {
     console.error('Failed to log error:', err);
   }
 };
 
-// Upload room inspection
+// COMPLETELY REWRITTEN uploadRoom function
 export const uploadRoom = async (formData, idToken) => {
+  // Validation
+  if (!formData) {
+    throw new Error('formData is required');
+  }
+  
+  if (!idToken) {
+    throw new Error('idToken is required');
+  }
+  
+  console.log('uploadRoom called with formData keys:', Object.keys(formData));
+  
+  // Build request body - NO sanitization to avoid issues
+  const requestBody = {
+    dorm: String(formData.dorm || ''),
+    room: String(formData.room || ''),
+    notes: String(formData.notes || ''),
+    imageBase64: String(formData.imageBase64 || ''),
+    uploadedByUserId: String(formData.uploadedByUserId || ''),
+    uploadedByName: String(formData.uploadedByName || ''),
+    residentName: String(formData.residentName || ''),
+    residentJNumber: String(formData.residentJNumber || ''),
+    residentEmail: String(formData.residentEmail || ''),
+    inspectionStatus: String(formData.inspectionStatus || ''),
+    maintenanceIssues: Array.isArray(formData.maintenanceIssues) ? formData.maintenanceIssues : [],
+    failureReasons: Array.isArray(formData.failureReasons) ? formData.failureReasons : []
+  };
+  
+  console.log('Request body constructed:', {
+    ...requestBody,
+    imageBase64: `[${requestBody.imageBase64.length} chars]`
+  });
+  
+  // Stringify
+  const bodyString = JSON.stringify(requestBody);
+  console.log('Body string length:', bodyString.length);
+  
+  // Make request
+  const endpoint = `${API_BASE_URL}${config.api.endpoints.uploadRoom}`;
+  console.log('Calling:', endpoint);
+  
   try {
-    const response = await apiCall(`${API_BASE_URL}${config.api.endpoints.uploadRoom}`, {
+    const response = await fetch(endpoint, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${idToken}`
+        'Content-Type': 'application/json',
+        'Authorization': idToken
       },
-      body: formData
+      body: bodyString
     });
-
-    return await response.json();
+    
+    console.log('Response status:', response.status);
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Response error:', errorText);
+      throw new Error(`Upload failed: ${response.status} - ${errorText}`);
+    }
+    
+    const result = await response.json();
+    console.log('Upload successful:', result);
+    return result;
+    
   } catch (error) {
     console.error('Upload error:', error);
-    throw new Error(error.message || 'Failed to upload room inspection');
+    throw error;
   }
 };
 
@@ -146,13 +186,13 @@ export const getUploads = async (idToken) => {
     const response = await apiCall(`${API_BASE_URL}${config.api.endpoints.getUploads}`, {
       method: 'GET',
       headers: {
-        'Authorization': `Bearer ${idToken}`,
+        'Authorization': idToken,
         'Content-Type': 'application/json'
       }
     });
-
     const data = await response.json();
-    return data.uploads || [];
+    if (Array.isArray(data)) return data;
+    return data.items || data.uploads || [];
   } catch (error) {
     console.error('Get uploads error:', error);
     throw new Error(error.message || 'Failed to fetch uploads');
@@ -160,19 +200,20 @@ export const getUploads = async (idToken) => {
 };
 
 // Delete single upload
-export const deleteUpload = async (uploadId, idToken) => {
+export const deleteUpload = async (upload, idToken) => {
   try {
-    const sanitizedId = sanitizeInput(uploadId);
-    
     const response = await apiCall(`${API_BASE_URL}${config.api.endpoints.deleteUpload}`, {
       method: 'DELETE',
       headers: {
-        'Authorization': `Bearer ${idToken}`,
+        'Authorization': idToken,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({ uploadId: sanitizedId })
+      body: JSON.stringify({
+        userId: upload.uploadedByUserId,
+        timestamp: upload.uploadedAt,
+        imageKey: upload.imageKey
+      })
     });
-
     return await response.json();
   } catch (error) {
     console.error('Delete upload error:', error);
@@ -181,42 +222,25 @@ export const deleteUpload = async (uploadId, idToken) => {
 };
 
 // Bulk delete uploads
-export const bulkDeleteUploads = async (uploadIds, idToken, onProgress) => {
-  const results = {
-    successful: [],
-    failed: []
-  };
+export const bulkDeleteUploads = async (uploads, idToken, onProgress) => {
+  const results = { successful: [], failed: [] };
 
-  for (let i = 0; i < uploadIds.length; i++) {
+  for (let i = 0; i < uploads.length; i++) {
     try {
-      await deleteUpload(uploadIds[i], idToken);
-      results.successful.push(uploadIds[i]);
-      
-      if (onProgress) {
-        onProgress({
-          current: i + 1,
-          total: uploadIds.length,
-          successful: results.successful.length,
-          failed: results.failed.length
-        });
-      }
+      await deleteUpload(uploads[i], idToken);
+      results.successful.push(uploads[i]);
     } catch (error) {
-      results.failed.push({
-        id: uploadIds[i],
-        error: error.message
+      results.failed.push({ upload: uploads[i], error: error.message });
+    }
+    if (onProgress) {
+      onProgress({
+        current: i + 1,
+        total: uploads.length,
+        successful: results.successful.length,
+        failed: results.failed.length
       });
-      
-      if (onProgress) {
-        onProgress({
-          current: i + 1,
-          total: uploadIds.length,
-          successful: results.successful.length,
-          failed: results.failed.length
-        });
-      }
     }
   }
-
   return results;
 };
 
@@ -224,16 +248,14 @@ export const bulkDeleteUploads = async (uploadIds, idToken, onProgress) => {
 export const createUser = async (userData, idToken) => {
   try {
     const sanitizedData = sanitizeInput(userData);
-    
     const response = await apiCall(`${API_BASE_URL}${config.api.endpoints.createUser}`, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${idToken}`,
+        'Authorization': idToken,
         'Content-Type': 'application/json'
       },
       body: JSON.stringify(sanitizedData)
     });
-
     return await response.json();
   } catch (error) {
     console.error('Create user error:', error);
@@ -247,11 +269,10 @@ export const getUsers = async (idToken) => {
     const response = await apiCall(`${API_BASE_URL}${config.api.endpoints.getUsers}`, {
       method: 'GET',
       headers: {
-        'Authorization': `Bearer ${idToken}`,
+        'Authorization': idToken,
         'Content-Type': 'application/json'
       }
     });
-
     const data = await response.json();
     return data.users || [];
   } catch (error) {
@@ -260,20 +281,18 @@ export const getUsers = async (idToken) => {
   }
 };
 
-// Delete user (admin) - BACKEND IMPLEMENTATION
+// Delete user (admin)
 export const deleteUser = async (username, idToken) => {
   try {
     const sanitizedUsername = sanitizeInput(username);
-    
     const response = await apiCall(`${API_BASE_URL}${config.api.endpoints.deleteUser}`, {
       method: 'DELETE',
       headers: {
-        'Authorization': `Bearer ${idToken}`,
+        'Authorization': idToken,
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({ username: sanitizedUsername })
     });
-
     return await response.json();
   } catch (error) {
     console.error('Delete user error:', error);
@@ -281,13 +300,11 @@ export const deleteUser = async (username, idToken) => {
   }
 };
 
-// Health check
 export const healthCheck = async () => {
   try {
     const response = await fetchWithTimeout(`${API_BASE_URL}${config.api.endpoints.health}`, {
       method: 'GET'
     });
-
     return response.ok;
   } catch (error) {
     console.error('Health check failed:', error);
@@ -296,13 +313,6 @@ export const healthCheck = async () => {
 };
 
 export default {
-  uploadRoom,
-  getUploads,
-  deleteUpload,
-  bulkDeleteUploads,
-  createUser,
-  getUsers,
-  deleteUser,
-  healthCheck,
-  logError
+  uploadRoom, getUploads, deleteUpload, bulkDeleteUploads,
+  createUser, getUsers, deleteUser, healthCheck, logError
 };

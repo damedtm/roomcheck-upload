@@ -1,5 +1,5 @@
 // Configuration file for RoomCheck application
-// This centralizes all AWS and app configuration
+// Single API: RoomCheckUploadsAPI (lsnro81xgl)
 
 const config = {
   // AWS Cognito
@@ -9,17 +9,17 @@ const config = {
     region: process.env.REACT_APP_REGION || 'us-east-2'
   },
 
-  // AWS API Gateway - FIXED: Correct URL with 'l' not '1'
+  // AWS API Gateway - RoomCheckUploadsAPI (lsnro81xgl)
   api: {
     baseUrl: process.env.REACT_APP_API_URL || 'https://lsnro81xgl.execute-api.us-east-2.amazonaws.com/prod',
     endpoints: {
-      uploadRoom: '/upload-room',
-      getUploads: '/admin/get-uploads',
-      deleteUpload: '/admin/delete-upload',
-      bulkDeleteUploads: '/admin/bulk-delete-uploads',
-      createUser: '/create-user',
-      getUsers: '/admin/get-users',
-      deleteUser: '/admin/delete-user',
+      uploadRoom: '/upload',                      // FIXED: was /upload-room
+      getUploads: '/admin/get-uploads',           // ✅ correct
+      deleteUpload: '/admin/delete-upload',       // ✅ correct
+      bulkDeleteUploads: '/admin/delete-upload',  // bulk delete reuses same endpoint in a loop
+      createUser: '/admin/create-user',           // FIXED: was /create-user
+      getUsers: '/admin/delete-user',             // GET method on /admin/delete-user ✅
+      deleteUser: '/admin/delete-user',           // DELETE method on /admin/delete-user ✅
       logError: '/log-error',
       health: '/health'
     },
@@ -37,8 +37,8 @@ const config = {
   app: {
     maxFileSize: 10 * 1024 * 1024, // 10MB
     allowedFileTypes: ['image/jpeg', 'image/jpg', 'image/png'],
-    imageQuality: 0.8, // JPEG quality for compression
-    maxImageDimension: 1920, // Max width/height before resize
+    imageQuality: 0.8,
+    maxImageDimension: 1920,
   },
 
   // Feature flags
@@ -51,7 +51,7 @@ const config = {
     auditLogging: true
   },
 
-  // UPPERCASE VERSION FOR COMPATIBILITY - FIXED
+  // UPPERCASE VERSION FOR COMPATIBILITY
   FEATURES: {
     DARK_MODE: true,
     BULK_DELETE: true,
@@ -85,12 +85,11 @@ if (process.env.NODE_ENV === 'production') {
   ];
 
   const missing = required.filter(key => !process.env[key]);
-  
+
   if (missing.length > 0) {
     console.warn('Missing required environment variables:', missing);
   }
 }
 
-// Export as both default and named export for compatibility
 export const CONFIG = config;
 export default config;
