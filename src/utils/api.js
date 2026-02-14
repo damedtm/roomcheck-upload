@@ -43,7 +43,7 @@ const fetchWithTimeout = async (url, options = {}) => {
 
 const apiCall = async (url, options = {}, retries = MAX_RETRIES) => {
   let lastError;
-  
+
   for (let i = 0; i < retries; i++) {
     try {
       const response = await fetchWithTimeout(url, options);
@@ -70,12 +70,12 @@ const apiCall = async (url, options = {}, retries = MAX_RETRIES) => {
       throw new Error(`Server error: ${response.status} ${response.statusText}`);
     } catch (error) {
       lastError = error;
-      
+
       // Don't retry client errors
       if (error.message.includes('Error: 4')) {
         throw error;
       }
-      
+
       // Retry network errors
       if (i < retries - 1 && (error.message.includes('timeout') || error.message.includes('fetch') || error.message.includes('NetworkError'))) {
         const backoffTime = Math.min(1000 * Math.pow(2, i), 10000);
@@ -83,11 +83,11 @@ const apiCall = async (url, options = {}, retries = MAX_RETRIES) => {
         await sleep(backoffTime);
         continue;
       }
-      
+
       throw error;
     }
   }
-  
+
   throw lastError || new Error('Request failed after retries');
 };
 
@@ -110,20 +110,13 @@ export const logError = async (error, context = {}) => {
   }
 };
 
-// COMPLETELY REWRITTEN uploadRoom function
+// Upload room
 export const uploadRoom = async (formData, idToken) => {
-  // Validation
-  if (!formData) {
-    throw new Error('formData is required');
-  }
-  
-  if (!idToken) {
-    throw new Error('idToken is required');
-  }
-  
+  if (!formData) throw new Error('formData is required');
+  if (!idToken) throw new Error('idToken is required');
+
   console.log('uploadRoom called with formData keys:', Object.keys(formData));
-  
-  // Build request body - NO sanitization to avoid issues
+
   const requestBody = {
     dorm: String(formData.dorm || ''),
     room: String(formData.room || ''),
@@ -138,42 +131,39 @@ export const uploadRoom = async (formData, idToken) => {
     maintenanceIssues: Array.isArray(formData.maintenanceIssues) ? formData.maintenanceIssues : [],
     failureReasons: Array.isArray(formData.failureReasons) ? formData.failureReasons : []
   };
-  
+
   console.log('Request body constructed:', {
     ...requestBody,
     imageBase64: `[${requestBody.imageBase64.length} chars]`
   });
-  
-  // Stringify
+
   const bodyString = JSON.stringify(requestBody);
   console.log('Body string length:', bodyString.length);
-  
-  // Make request
+
   const endpoint = `${API_BASE_URL}${config.api.endpoints.uploadRoom}`;
   console.log('Calling:', endpoint);
-  
+
   try {
     const response = await fetch(endpoint, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': idToken
+        'Authorization': `Bearer ${idToken}`  // FIXED: added Bearer prefix
       },
       body: bodyString
     });
-    
+
     console.log('Response status:', response.status);
-    
+
     if (!response.ok) {
       const errorText = await response.text();
       console.error('Response error:', errorText);
       throw new Error(`Upload failed: ${response.status} - ${errorText}`);
     }
-    
+
     const result = await response.json();
     console.log('Upload successful:', result);
     return result;
-    
   } catch (error) {
     console.error('Upload error:', error);
     throw error;
@@ -186,7 +176,7 @@ export const getUploads = async (idToken) => {
     const response = await apiCall(`${API_BASE_URL}${config.api.endpoints.getUploads}`, {
       method: 'GET',
       headers: {
-        'Authorization': idToken,
+        'Authorization': `Bearer ${idToken}`,  // FIXED: added Bearer prefix
         'Content-Type': 'application/json'
       }
     });
@@ -205,7 +195,7 @@ export const deleteUpload = async (upload, idToken) => {
     const response = await apiCall(`${API_BASE_URL}${config.api.endpoints.deleteUpload}`, {
       method: 'DELETE',
       headers: {
-        'Authorization': idToken,
+        'Authorization': `Bearer ${idToken}`,  // FIXED: added Bearer prefix
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
@@ -244,13 +234,13 @@ export const bulkDeleteUploads = async (uploads, idToken, onProgress) => {
   return results;
 };
 
-// Create user (admin) - FIXED: removed sanitization
+// Create user (admin)
 export const createUser = async (userData, idToken) => {
   try {
     const response = await apiCall(`${API_BASE_URL}${config.api.endpoints.createUser}`, {
       method: 'POST',
       headers: {
-        'Authorization': idToken,
+        'Authorization': `Bearer ${idToken}`,  // FIXED: added Bearer prefix
         'Content-Type': 'application/json'
       },
       body: JSON.stringify(userData)
@@ -262,25 +252,22 @@ export const createUser = async (userData, idToken) => {
   }
 };
 
-// Get all users (admin) - UPDATED to handle both array and object responses
+// Get all users (admin)
 export const getUsers = async (idToken) => {
   try {
     console.log('🔍 Fetching users...');
-    
+
     const response = await apiCall(`${API_BASE_URL}${config.api.endpoints.getUsers}`, {
       method: 'GET',
       headers: {
-        'Authorization': idToken,
+        'Authorization': `Bearer ${idToken}`,  // FIXED: added Bearer prefix
         'Content-Type': 'application/json'
       }
     });
-    
+
     const data = await response.json();
     console.log('✅ API response:', data);
-    
-    // Handle both formats:
-    // 1. Array response: [user1, user2, ...]
-    // 2. Object response: { users: [...], count: 3 }
+
     if (Array.isArray(data)) {
       console.log(`📦 Received ${data.length} users (array format)`);
       return data;
@@ -297,16 +284,16 @@ export const getUsers = async (idToken) => {
   }
 };
 
-// Delete user (admin) - FIXED: removed sanitization
-export const deleteUser = async (username, idToken) => {
+// Delete user (admin)
+export const deleteUser = async (userId, idToken) => {  // FIXED: param renamed to userId for clarity
   try {
     const response = await apiCall(`${API_BASE_URL}${config.api.endpoints.deleteUser}`, {
       method: 'DELETE',
       headers: {
-        'Authorization': idToken,
+        'Authorization': `Bearer ${idToken}`,  // FIXED: added Bearer prefix
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({ username })
+      body: JSON.stringify({ username: userId })  // keeps "username" key the Lambda expects
     });
     return await response.json();
   } catch (error) {
