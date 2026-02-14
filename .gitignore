@@ -27,3 +27,5 @@ yarn-error.log*
 .env.local
 .env.production.local
 .env.development.local
+
+node_modules/
