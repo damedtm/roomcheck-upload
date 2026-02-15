@@ -7,7 +7,6 @@ const TIMEOUT = config.api.timeout || 30000;
 
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-// Simplified sanitization - DOMPurify can cause issues with complex objects
 const sanitizeInput = (input) => {
   if (typeof input === 'string') {
     return DOMPurify.sanitize(input);
@@ -48,18 +47,15 @@ const apiCall = async (url, options = {}, retries = MAX_RETRIES) => {
     try {
       const response = await fetchWithTimeout(url, options);
 
-      // Success - return immediately
       if (response.ok) {
         return response;
       }
 
-      // Client errors (4xx) - don't retry
       if (response.status >= 400 && response.status < 500) {
         const errorData = await response.json().catch(() => ({}));
         throw new Error(errorData.message || `Error: ${response.status} ${response.statusText}`);
       }
 
-      // Server errors (5xx) - retry with backoff
       if (i < retries - 1) {
         const backoffTime = Math.min(1000 * Math.pow(2, i), 10000);
         console.log(`Retry attempt ${i + 1} after ${backoffTime}ms`);
@@ -71,12 +67,10 @@ const apiCall = async (url, options = {}, retries = MAX_RETRIES) => {
     } catch (error) {
       lastError = error;
 
-      // Don't retry client errors
       if (error.message.includes('Error: 4')) {
         throw error;
       }
 
-      // Retry network errors
       if (i < retries - 1 && (error.message.includes('timeout') || error.message.includes('fetch') || error.message.includes('NetworkError'))) {
         const backoffTime = Math.min(1000 * Math.pow(2, i), 10000);
         console.log(`Retry attempt ${i + 1} after ${backoffTime}ms due to: ${error.message}`);
@@ -115,8 +109,6 @@ export const uploadRoom = async (formData, idToken) => {
   if (!formData) throw new Error('formData is required');
   if (!idToken) throw new Error('idToken is required');
 
-  console.log('uploadRoom called with formData keys:', Object.keys(formData));
-
   const requestBody = {
     dorm: String(formData.dorm || ''),
     room: String(formData.room || ''),
@@ -132,38 +124,24 @@ export const uploadRoom = async (formData, idToken) => {
     failureReasons: Array.isArray(formData.failureReasons) ? formData.failureReasons : []
   };
 
-  console.log('Request body constructed:', {
-    ...requestBody,
-    imageBase64: `[${requestBody.imageBase64.length} chars]`
-  });
-
-  const bodyString = JSON.stringify(requestBody);
-  console.log('Body string length:', bodyString.length);
-
   const endpoint = `${API_BASE_URL}${config.api.endpoints.uploadRoom}`;
-  console.log('Calling:', endpoint);
 
   try {
     const response = await fetch(endpoint, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${idToken}`  // FIXED: added Bearer prefix
+        'Authorization': `Bearer ${idToken}`
       },
-      body: bodyString
+      body: JSON.stringify(requestBody)
     });
-
-    console.log('Response status:', response.status);
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('Response error:', errorText);
       throw new Error(`Upload failed: ${response.status} - ${errorText}`);
     }
 
-    const result = await response.json();
-    console.log('Upload successful:', result);
-    return result;
+    return await response.json();
   } catch (error) {
     console.error('Upload error:', error);
     throw error;
@@ -176,7 +154,7 @@ export const getUploads = async (idToken) => {
     const response = await apiCall(`${API_BASE_URL}${config.api.endpoints.getUploads}`, {
       method: 'GET',
       headers: {
-        'Authorization': `Bearer ${idToken}`,  // FIXED: added Bearer prefix
+        'Authorization': `Bearer ${idToken}`,
         'Content-Type': 'application/json'
       }
     });
@@ -195,7 +173,7 @@ export const deleteUpload = async (upload, idToken) => {
     const response = await apiCall(`${API_BASE_URL}${config.api.endpoints.deleteUpload}`, {
       method: 'DELETE',
       headers: {
-        'Authorization': `Bearer ${idToken}`,  // FIXED: added Bearer prefix
+        'Authorization': `Bearer ${idToken}`,
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
@@ -240,7 +218,7 @@ export const createUser = async (userData, idToken) => {
     const response = await apiCall(`${API_BASE_URL}${config.api.endpoints.createUser}`, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${idToken}`,  // FIXED: added Bearer prefix
+        'Authorization': `Bearer ${idToken}`,
         'Content-Type': 'application/json'
       },
       body: JSON.stringify(userData)
@@ -260,7 +238,7 @@ export const getUsers = async (idToken) => {
     const response = await apiCall(`${API_BASE_URL}${config.api.endpoints.getUsers}`, {
       method: 'GET',
       headers: {
-        'Authorization': `Bearer ${idToken}`,  // FIXED: added Bearer prefix
+        'Authorization': `Bearer ${idToken}`,
         'Content-Type': 'application/json'
       }
     });
@@ -269,10 +247,8 @@ export const getUsers = async (idToken) => {
     console.log('✅ API response:', data);
 
     if (Array.isArray(data)) {
-      console.log(`📦 Received ${data.length} users (array format)`);
       return data;
     } else if (data.users && Array.isArray(data.users)) {
-      console.log(`📦 Received ${data.users.length} users (object format)`);
       return data.users;
     } else {
       console.warn('⚠️ Unexpected response format:', data);
@@ -285,15 +261,18 @@ export const getUsers = async (idToken) => {
 };
 
 // Delete user (admin)
-export const deleteUser = async (userId, idToken) => {  // FIXED: param renamed to userId for clarity
+// FIXED: now sends both userId AND email, which the Lambda requires
+export const deleteUser = async (userId, email, idToken) => {
   try {
+    console.log('🗑️ Deleting user:', { userId, email });
+
     const response = await apiCall(`${API_BASE_URL}${config.api.endpoints.deleteUser}`, {
       method: 'DELETE',
       headers: {
-        'Authorization': `Bearer ${idToken}`,  // FIXED: added Bearer prefix
+        'Authorization': `Bearer ${idToken}`,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({ username: userId })  // keeps "username" key the Lambda expects
+      body: JSON.stringify({ userId, email })  // FIXED: Lambda requires both fields
     });
     return await response.json();
   } catch (error) {

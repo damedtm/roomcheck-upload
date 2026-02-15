@@ -13,17 +13,17 @@ const config = {
   api: {
     baseUrl: process.env.REACT_APP_API_URL || 'https://lsnro81xgl.execute-api.us-east-2.amazonaws.com/prod',
     endpoints: {
-      uploadRoom: '/upload',                      // FIXED: was /upload-room
-      getUploads: '/admin/get-uploads',           // ✅ correct
-      deleteUpload: '/admin/delete-upload',       // ✅ correct
-      bulkDeleteUploads: '/admin/delete-upload',  // bulk delete reuses same endpoint in a loop
-      createUser: '/admin/create-user',           // FIXED: was /create-user
-      getUsers: '/admin/delete-user',             // GET method on /admin/delete-user ✅
-      deleteUser: '/admin/delete-user',           // DELETE method on /admin/delete-user ✅
+      uploadRoom: '/upload',
+      getUploads: '/admin/get-uploads',
+      deleteUpload: '/admin/delete-upload',
+      bulkDeleteUploads: '/admin/delete-upload',
+      createUser: '/admin/create-user',
+      getUsers: '/admin/get-users',        // FIXED: was wrongly set to '/admin/delete-user'
+      deleteUser: '/admin/delete-user',
       logError: '/log-error',
       health: '/health'
     },
-    timeout: 30000, // 30 seconds
+    timeout: 30000,
     retries: 3
   },
 
