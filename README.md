@@ -64,7 +64,7 @@ A comprehensive web application for managing dorm room inspections, built with R
                           │      Amazon S3             │
                           │                            │
                           │  Bucket:                   │
-                          │  roomcheck-photos-*        │
+                          │  <S3_BUCKET_NAME>          |
                           │                            │
                           │  Structure:                │
                           │  /uploads/{userId}/{uuid}  │
