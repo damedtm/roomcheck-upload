@@ -6,13 +6,13 @@ A comprehensive web application for managing dorm room inspections, built with R
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                        Frontend (React SPA)                      │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐          │
-│  │   RA Page    │  │  Admin Page  │  │   Login      │          │
-│  │              │  │              │  │   (Cognito)  │          │
-│  └──────────────┘  └──────────────┘  └──────────────┘          │
-│                                                                  │
-│  Components:                                                     │
+│                        Frontend (React SPA)                     │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐           │
+│  │   RA Page    │  │  Admin Page  │  │   Login      │           │
+│  │              │  │              │  │   (Cognito)  │           │
+│  └──────────────┘  └──────────────┘  └──────────────┘           |
+│                                                                 |
+│  Components:                                                    |
 │  • User Management  • Inspection Forms  • Data Tables           │
 │  • Image Upload     • CSV Export        • Search/Filter         │
 └─────────────────────────────────────────────────────────────────┘
@@ -20,10 +20,10 @@ A comprehensive web application for managing dorm room inspections, built with R
                               │ HTTPS (JWT Auth)
                               ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                   API Gateway (REST API)                         │
-│                 lsnro81xgl.execute-api.us-east-2                │
-│                                                                  │
-│  Routes:                                                         │
+│                   API Gateway (REST API)                        |
+│                      <API_BASE_URL>                             |
+│                                                                 |
+│  Routes:                                                        |
 │  POST   /upload                  → Upload room inspection       │
 │  GET    /admin/get-uploads       → Fetch all inspections        │
 │  DELETE /admin/delete-upload     → Delete inspection record     │
@@ -35,8 +35,8 @@ A comprehensive web application for managing dorm room inspections, built with R
                               │ Lambda Invocation
                               ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                      AWS Lambda Functions                        │
-│                                                                  │
+│                      AWS Lambda Functions                       |
+│                                                                 |
 │  • uploadRoomHandler      • getUploadsHandler                   │
 │  • deleteUploadHandler    • createUserHandler                   │
 │  • getUsersHandler        • deleteUserHandler                   │
@@ -48,10 +48,10 @@ A comprehensive web application for managing dorm room inspections, built with R
 │    AWS Cognito           │  │   Amazon DynamoDB      │
 │                          │  │                        │
 │  User Pool:              │  │  Tables:               │
-│  us-east-2_lk1vd8Mwx    │  │  • RoomCheckUploads    │
+│ <USER_POOL_ID>           |  |  • RoomCheckUploads    |
 │                          │  │  • RoomCheckUsers      │
 │  Identity Pool:          │  │                        │
-│  us-east-2:0d00064d...  │  │  Indexes:              │
+│  <IDENTITY_POOL_ID>      │  |  Indexes:              |
 │                          │  │  • userId-uploadedAt   │
 │  Features:               │  │  • dorm-room           │
 │  • JWT tokens            │  │                        │
